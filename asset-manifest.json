@@ -1,0 +1,12 @@
+{
+  "files": {
+    "main.css": "/KSynth/static/css/main.39463d40.css",
+    "main.js": "/KSynth/static/js/main.7036bef1.js",
+    "static/js/27.4eff105d.chunk.js": "/KSynth/static/js/27.4eff105d.chunk.js",
+    "index.html": "/KSynth/index.html"
+  },
+  "entrypoints": [
+    "static/css/main.39463d40.css",
+    "static/js/main.7036bef1.js"
+  ]
+}
