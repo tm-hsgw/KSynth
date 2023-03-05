@@ -1,22 +1,29 @@
 import { useCallback, useEffect, useState } from 'react';
 import './App.css';
 import { Chart } from './components/Chart';
-import { INITIAL_HYPER_PARAMS, HParam, Gauss } from './utils/Objective';
+import { INITIAL_HYPER_PARAMS, HParam } from './utils/Objective';
 import { Swarm, OptimizeResult } from './utils/PSO';
 
 type Props = {
   gtOptions: Highcharts.Options
   options: Highcharts.Options
   dataPointsStr: string
+  hParams: HParam
   ioParams: {
     alpha?: string
     mu?: string
     sigma?: string
   }[]
+  isAccordionOpen: boolean,
+  setAccordion: React.Dispatch<React.SetStateAction<boolean>>
   fittingResult?: OptimizeResult
   handleAddParams: () => void
   handleRemoveParams: (idx: number) => void
   handleChangeDataPoints: (input: string) => void
+  handleChangeHParams: (
+    key: 'count' | 'stride' | 'upperBound' | 'lowerBound',
+    value: number
+  ) => void
   handleChangeIOParams: (idx: number, param: 'alpha' | 'mu' | 'sigma', value: string) => void
   handleFit: () => void
 }
@@ -157,11 +164,15 @@ const Component: React.FC<Props> = ({
   gtOptions,
   options,
   dataPointsStr,
+  hParams,
   ioParams,
+  isAccordionOpen,
+  setAccordion,
   fittingResult,
   handleAddParams,
   handleRemoveParams,
   handleChangeDataPoints,
+  handleChangeHParams,
   handleChangeIOParams,
   handleFit
 }) => (
@@ -191,9 +202,9 @@ const Component: React.FC<Props> = ({
                 <div className='col-9'>
                   <label htmlFor={`alpha_${idx}`} className='form-label'>&alpha;<sub>{idx}</sub></label>
                   <input className='form-control mt-1 mb-3' id={`alpha_${idx}`} value={params.alpha} onChange={(e) => handleChangeIOParams(idx, 'alpha', e.currentTarget.value)} />
-                  <label htmlFor={`mu_${idx}`} className='form-label'>&mu;<sub>{idx}</sub></label>
+                  <label htmlFor={`mu_${idx}`} className='form-label'>c<sub>{idx}</sub></label>
                   <input className='form-control mt-1 mb-3' id={`mu_${idx}`} value={params.mu} onChange={(e) => handleChangeIOParams(idx, 'mu', e.currentTarget.value)} />
-                  <label htmlFor={`sigma_${idx}`} className='form-label'>&sigma;<sub>{idx}</sub></label>
+                  <label htmlFor={`sigma_${idx}`} className='form-label'>h<sub>{idx}</sub></label>
                   <input className='form-control mt-1 mb-3' id={`sigma_${idx}`} value={params.sigma} onChange={(e) => handleChangeIOParams(idx, 'sigma', e.currentTarget.value)} />
                 </div>
               </div>
@@ -211,6 +222,31 @@ const Component: React.FC<Props> = ({
 
           <button type='button' className='btn btn-primary w-100 h-25' onClick={handleFit}>Fit</button>
         </div>
+      </div>
+    </div>
+    <div className='row mt-5'>
+      <div className='col-2'></div>
+      <div className='col-8'>
+        {isAccordionOpen ? (
+          <>
+            <a href='#' className='text-primary' onClick={(_) => setAccordion(false)} >▼ しまう</a>
+            <div className='w-25'>
+              {['count', 'lowerBound', 'upperBound'].map(key => {
+                return (key === 'count' || key === 'lowerBound' || key === 'upperBound') && (
+                  <div className='mt-2'>
+                    <label htmlFor={`k_${key}`} className='form-label'>k: {key}</label>
+                    <input className='form-control mt-1 mb-3' id={`k_${key}`} value={hParams.k[key]} onChange={(e) => handleChangeHParams(key, Number(e.currentTarget.value))} />
+                  </div>
+                )
+              })}
+            </div>
+
+          </>
+        ) : (
+          <>
+            <a href='#' className='text-primary' onClick={(_) => setAccordion(true)} >▶ 高度なオプション</a>
+          </>
+        )}
       </div>
     </div>
     <div className='row d-flex mt-5'>
@@ -278,9 +314,10 @@ export const App = () => {
     { delay: 78867.4, autocorr: 0.08176584298399604 }
   ])
   const [plot1, setPlot1] = useState<{ observatin?: Highcharts.SeriesOptionsType, calc?: Highcharts.SeriesOptionsType, grid?: Highcharts.SeriesOptionsType[] }>()
+  const [isAccordionOpen, setAccordion] = useState(false)
 
   // todo
-  const [isInit, setIsInit] = useState(false)
+  // const [isInit, setIsInit] = useState(false)
 
   const CalcFt = useCallback(
     (params: { alpha: number, mu: number, sigma: number }[]) => {
@@ -295,14 +332,13 @@ export const App = () => {
       )
 
       const f = (t: number) => (
-        // todo: 刻み数state化
-        [...Array(101)]
-          .map((_, i) => hParams.k.lowerBound + (hParams.k.upperBound - hParams.k.lowerBound) / hParams.k.count * i)
+        [...Array(hParams.k.count)]
+          .map((_, i) => hParams.k.lowerBound + hParams.k.stride * i)
           .reduce((sum, k) => (
             sum
             // A_n
             + params.reduce((innerSum, param) => (
-              innerSum + param.alpha * a(param.mu, param.sigma, k) * ((hParams.k.upperBound - hParams.k.lowerBound) / hParams.k.count)
+              innerSum + param.alpha * a(param.mu, param.sigma, k) * (hParams.k.stride)
             ), 0)
             // exp(-k_n * t)
             * Math.exp(-k * t)
@@ -321,13 +357,13 @@ export const App = () => {
         type: 'scatter',
         name: `k = ${(i / 300000).toExponential(4)}`,
         data: RevExp(i / 300000),
-        color: '#50e991',
+        color: '#50e99160',
         marker: {
           radius: 0.5
         }
       }))
     }))
-    setIsInit(false)
+    // setIsInit(false)
   }, [])
 
   useEffect(() => {
@@ -361,6 +397,7 @@ export const App = () => {
         ...p,
         calc: {
           type: 'scatter',
+          name: 'F(t)',
           data: CalcFt(ioParams.map(p => ({ alpha: Number(p.alpha), mu: Number(p.mu), sigma: Number(p.sigma) }))),
           color: "#0bb4ff"
         }
@@ -374,6 +411,7 @@ export const App = () => {
       ...p,
       observatin: {
         type: 'scatter',
+        name: 'g(t)',
         data: dataPoints.map(d => [d.delay, d.autocorr]),
         color: '#e60049'
       }
@@ -392,10 +430,10 @@ export const App = () => {
         newSeries.push(plot1.observatin)
       }
 
-      setGtOptions({
-        ...gtOptions,
+      setGtOptions(go => ({
+        ...go,
         plotOptions: {
-          ...gtOptions.plotOptions,
+          ...go.plotOptions,
           scatter: {
             marker: {
               radius: 2.5,
@@ -416,7 +454,7 @@ export const App = () => {
           formatter: formatTooltip
         },
         xAxis: {
-          ...gtOptions.xAxis,
+          ...go.xAxis,
           endOnTick: false,
           min: 1.2,
           max: undefined,
@@ -427,7 +465,7 @@ export const App = () => {
           },
         },
         yAxis: {
-          ...gtOptions.yAxis,
+          ...go.yAxis,
           endOnTick: false,
           title: {
             text: 'g(t)',
@@ -440,7 +478,7 @@ export const App = () => {
           enabled: false
         },
         series: newSeries
-      })
+      }))
     }
   }, [plot1])
 
@@ -517,6 +555,25 @@ export const App = () => {
     setIOParams(newParams)
   }
 
+  const handleChangeHParams = (
+    key: 'count' | 'stride' | 'upperBound' | 'lowerBound',
+    value: number
+  ) => {
+    if (isNaN(value)) return
+    if (key === 'count') {
+      setHParams(p => ({
+        k: {
+          ...p.k,
+          stride: (hParams.k.upperBound - hParams.k.lowerBound) / value,
+          count: value
+        }
+      }))
+    }
+    else {
+      hParams.k[key] = value
+    }
+  }
+
   const Residual = (params: { alpha: number, mu: number, sigma: number }[]) => {
     const sumAlpha = params.reduce((sum, p) => sum + p.alpha, 0)
     params = params.map(p => ({
@@ -531,12 +588,12 @@ export const App = () => {
     const f = (t: number) => (
       // todo: 刻み数state化
       [...Array(101)]
-        .map((_, i) => hParams.k.lowerBound + (hParams.k.upperBound - hParams.k.lowerBound) / hParams.k.count * i)
+        .map((_, i) => hParams.k.lowerBound + hParams.k.stride * i)
         .reduce((sum, k) => (
           sum
           // A_n
           + params.reduce((innerSum, param) => (
-            innerSum + param.alpha * a(param.mu, param.sigma, k) * ((hParams.k.upperBound - hParams.k.lowerBound) / hParams.k.count)
+            innerSum + param.alpha * a(param.mu, param.sigma, k) * hParams.k.stride
           ), 0)
           // exp(-k_n * t)
           * Math.exp(-k * t)
@@ -563,11 +620,15 @@ export const App = () => {
     gtOptions,
     options,
     dataPointsStr: dataPoints.map(d => `${d.delay}, ${d.autocorr.toFixed(4)}`).join('\n'),
+    hParams,
     ioParams,
+    isAccordionOpen,
+    setAccordion,
     fittingResult,
     handleAddParams,
     handleRemoveParams,
     handleChangeDataPoints,
+    handleChangeHParams,
     handleChangeIOParams,
     handleFit
   }} />
