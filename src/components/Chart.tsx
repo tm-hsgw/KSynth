@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { FC, memo, useRef } from 'react';
 import Highcharts from 'highcharts';
 import HighchartsReact from 'highcharts-react-official';
 
@@ -6,7 +6,7 @@ type Props = {
   options: Highcharts.Options
 }
 
-export const Chart: React.FC<Props> = ({ options }) => {
+export const Chart: FC<Props> = memo(({ options }) => {
   const chartComponentRef = useRef<HighchartsReact.RefObject>(null);
 
   return (
@@ -16,4 +16,4 @@ export const Chart: React.FC<Props> = ({ options }) => {
       ref={chartComponentRef}
     />
   )
-}
+})
