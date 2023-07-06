@@ -77,7 +77,7 @@ export const Swarm = (
     cg,
     fit: (
       f: (candidate: number[]) => number,
-      tmax: number = 500,
+      tmax: number = 200,
       criterion: number | null = null
     ) => {
       if (self) {

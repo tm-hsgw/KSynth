@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import './App.css';
 import { Chart } from './components/Chart';
-import { INITIAL_HYPER_PARAMS, HParam } from './utils/Objective';
+import { HParamsBox } from './components/HParams';
+import { INITIAL_HYPER_PARAMS } from './utils/Objective';
 import { Swarm, OptimizeResult } from './utils/PSO';
 
 type Props = {
   gtOptions: Highcharts.Options
   options: Highcharts.Options
   dataPointsStr: string
-  hParams: HParam
+  // hParams: HParam
   ioParams: {
     alpha?: string
     mu?: string
@@ -22,7 +23,7 @@ type Props = {
   handleChangeDataPoints: (input: string) => void
   handleChangeHParams: (
     key: 'count' | 'stride' | 'upperBound' | 'lowerBound',
-    value: number
+    value: string
   ) => void
   handleChangeIOParams: (idx: number, param: 'alpha' | 'mu' | 'sigma', value: string) => void
   handleFit: () => void
@@ -54,7 +55,7 @@ const GaussianDist = (mu: number, sigma: number, d?: number, alpha?: number) => 
 }
 
 const RevExp = (k: number, tstart: number = 0, tend: number = 78867.4) => {
-  console.log(k)
+  // console.log(k)
   const dt = (tend - tstart) / 200
   let arr = []
   for (let t = 0; t < tend; t += dt) {
@@ -164,7 +165,7 @@ const Component: React.FC<Props> = ({
   gtOptions,
   options,
   dataPointsStr,
-  hParams,
+  // hParams,
   ioParams,
   isAccordionOpen,
   setAccordion,
@@ -232,11 +233,13 @@ const Component: React.FC<Props> = ({
             <a href='#' className='text-primary' onClick={(_) => setAccordion(false)} >▼ しまう</a>
             <div className='w-25'>
               {['count', 'lowerBound', 'upperBound'].map(key => {
-                return (key === 'count' || key === 'lowerBound' || key === 'upperBound') && (
-                  <div className='mt-2'>
-                    <label htmlFor={`k_${key}`} className='form-label'>k: {key}</label>
-                    <input className='form-control mt-1 mb-3' id={`k_${key}`} value={hParams.k[key]} onChange={(e) => handleChangeHParams(key, Number(e.currentTarget.value))} />
-                  </div>
+                return (
+                  <HParamsBox {...{
+                    idx: key, setter: (k, v) => {
+                      if (k === 'count' || k === 'lowerBound' || k === 'upperBound')
+                        handleChangeHParams(k, v)
+                    }
+                  }} />
                 )
               })}
             </div>
@@ -332,13 +335,13 @@ export const App = () => {
       )
 
       const f = (t: number) => (
-        [...Array(hParams.k.count)]
-          .map((_, i) => hParams.k.lowerBound + hParams.k.stride * i)
+        [...Array(Number(hParams.k.count))]
+          .map((_, i) => Number(hParams.k.lowerBound) + Number(hParams.k.stride) * i)
           .reduce((sum, k) => (
             sum
             // A_n
             + params.reduce((innerSum, param) => (
-              innerSum + param.alpha * a(param.mu, param.sigma, k) * (hParams.k.stride)
+              innerSum + param.alpha * a(param.mu, param.sigma, Number(k)) * (Number(hParams.k.stride))
             ), 0)
             // exp(-k_n * t)
             * Math.exp(-k * t)
@@ -482,7 +485,58 @@ export const App = () => {
     }
   }, [plot1])
 
-  const handleChangeDataPoints = (input: string) => {
+  useEffect(() => {
+    setHParams(p => ({
+      k: {
+        ...p.k,
+        stride: String((Number(hParams.k.upperBound) - Number(hParams.k.lowerBound)) / Number(hParams.k.count)),
+      }
+    }))
+  }, [hParams.k.lowerBound, hParams.k.upperBound, hParams.k.count])
+
+  const Residual = useCallback((params: { alpha: number, mu: number, sigma: number }[]) => {
+    const sumAlpha = params.reduce((sum, p) => sum + p.alpha, 0)
+    params = params.map(p => ({
+      ...p,
+      alpha: p.alpha / sumAlpha
+    }))
+
+    const a = (c: number, h: number, x: number) => (
+      1 / Math.sqrt(2 * Math.PI * h * h) * Math.exp(-1 * (x - c) * (x - c) / 2 / h / h)
+    )
+
+    const f = (t: number) => (
+      // todo: 刻み数state化
+      [...Array(101)]
+        .map((_, i) => Number(hParams.k.lowerBound) + Number(hParams.k.stride) * i)
+        .reduce((sum, k) => (
+          sum
+          // A_n
+          + params.reduce((innerSum, param) => (
+            innerSum + param.alpha * a(param.mu, param.sigma, Number(k)) * Number(hParams.k.stride)
+          ), 0)
+          // exp(-k_n * t)
+          * Math.exp(-k * t)
+        ), 0)
+    )
+
+    return dataPoints
+      .reduce((sum, point) => (
+        sum + Math.abs(f(point.delay) - point.autocorr)
+      ), 0)
+  }, [dataPoints, hParams.k.lowerBound, hParams.k.stride])
+
+  const ObjectiveFunc = useCallback((candidate: number[]) => {
+    const n = candidate.length
+    let props = []
+    for (let i = 0; i < n; i += 3) {
+      props.push({ alpha: candidate[i], mu: candidate[i + 1], sigma: candidate[i + 2] })
+    }
+
+    return Residual(props)
+  }, [Residual])
+
+  const handleChangeDataPoints = useCallback((input: string) => {
     const newDataPoints = input
       .replace('\r\n', '\n')
       .replace('\r', '\n')
@@ -512,29 +566,29 @@ export const App = () => {
     if (newDataPoints.length > 0) {
       setDataPoints(newDataPoints)
     }
-  }
+  }, [])
 
-  const handleChangeIOParams = (idx: number, param: 'alpha' | 'mu' | 'sigma', value: string) => {
+  const handleChangeIOParams = useCallback((idx: number, param: 'alpha' | 'mu' | 'sigma', value: string) => {
     let newParams = ioParams.slice()
 
     newParams[idx][param] = value
     setIOParams(newParams)
-  }
+  }, [ioParams])
 
-  const handleAddParams = () => {
+  const handleAddParams = useCallback(() => {
     let newParams = ioParams.slice()
     newParams.push(Object.assign({}, ioParams[ioParams.length - 1]))
 
     setIOParams(newParams)
-  }
+  }, [ioParams])
 
-  const handleRemoveParams = (idx: number) => {
+  const handleRemoveParams = useCallback((idx: number) => {
     let newParams = ioParams.slice().filter((_, i) => i !== idx)
 
     setIOParams(newParams)
-  }
+  }, [ioParams])
 
-  const handleFit = () => {
+  const handleFit = useCallback(() => {
     const swarm = Swarm(ioParams.length * 3)
     const result = swarm.fit(ObjectiveFunc, 100)
 
@@ -544,7 +598,7 @@ export const App = () => {
       newParams.push({ alpha: result.value[i], mu: result.value[i + 1].toExponential(4), sigma: result.value[i + 2].toExponential(4) })
     }
 
-    console.log(newParams)
+    // console.log(newParams)
     setFittingResult(result)
 
     const sumAlpha = newParams.reduce((sum, p) => sum + p.alpha, 0)
@@ -553,68 +607,20 @@ export const App = () => {
       alpha: (p.alpha / sumAlpha).toFixed(4)
     }))
     setIOParams(newParams)
-  }
+  }, [ObjectiveFunc, ioParams.length])
 
-  const handleChangeHParams = (
+  const handleChangeHParams = useCallback((
     key: 'count' | 'stride' | 'upperBound' | 'lowerBound',
-    value: number
+    value: string
   ) => {
-    if (isNaN(value)) return
-    if (key === 'count') {
-      setHParams(p => ({
-        k: {
-          ...p.k,
-          stride: (hParams.k.upperBound - hParams.k.lowerBound) / value,
-          count: value
-        }
-      }))
-    }
-    else {
-      hParams.k[key] = value
-    }
-  }
-
-  const Residual = (params: { alpha: number, mu: number, sigma: number }[]) => {
-    const sumAlpha = params.reduce((sum, p) => sum + p.alpha, 0)
-    params = params.map(p => ({
-      ...p,
-      alpha: p.alpha / sumAlpha
+    setHParams(p => ({
+      k: {
+        ...p.k,
+        [key]: value
+      }
     }))
 
-    const a = (c: number, h: number, x: number) => (
-      1 / Math.sqrt(2 * Math.PI * h * h) * Math.exp(-1 * (x - c) * (x - c) / 2 / h / h)
-    )
-
-    const f = (t: number) => (
-      // todo: 刻み数state化
-      [...Array(101)]
-        .map((_, i) => hParams.k.lowerBound + hParams.k.stride * i)
-        .reduce((sum, k) => (
-          sum
-          // A_n
-          + params.reduce((innerSum, param) => (
-            innerSum + param.alpha * a(param.mu, param.sigma, k) * hParams.k.stride
-          ), 0)
-          // exp(-k_n * t)
-          * Math.exp(-k * t)
-        ), 0)
-    )
-
-    return dataPoints
-      .reduce((sum, point) => (
-        sum + Math.abs(f(point.delay) - point.autocorr)
-      ), 0)
-  }
-
-  const ObjectiveFunc = (candidate: number[]) => {
-    const n = candidate.length
-    let props = []
-    for (let i = 0; i < n; i += 3) {
-      props.push({ alpha: candidate[i], mu: candidate[i + 1], sigma: candidate[i + 2] })
-    }
-
-    return Residual(props)
-  }
+  }, [])
 
   return <Component {...{
     gtOptions,

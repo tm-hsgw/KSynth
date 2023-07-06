@@ -1,11 +1,11 @@
 export type HParam = {
   k: {
     // N, 刻み数
-    count: number;
+    count: string;
     // 刻み幅, readonly
-    stride: number;
-    lowerBound: number;
-    upperBound: number;
+    stride: string;
+    lowerBound: string;
+    upperBound: string;
   };
 };
 
@@ -15,9 +15,9 @@ export const Gauss = (x: number, mu: number, sigma: number) =>
 
 export const INITIAL_HYPER_PARAMS: HParam = {
   k: {
-    count: 100,
-    stride: (1e-4 - 1e-5) / 100,
-    lowerBound: 1e-5,
-    upperBound: 1e-4,
+    count: "100",
+    stride: String((1e-4 - 1e-5) / 100),
+    lowerBound: String(1e-5),
+    upperBound: String(1e-4),
   },
 };
